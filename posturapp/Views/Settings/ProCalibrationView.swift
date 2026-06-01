@@ -10,34 +10,38 @@ struct ProCalibrationView: View {
 
     @State private var phase: Phase = .intro
     @State private var working = ProCalibrationBaseline()
-    @State private var promptIndex = 0
     @State private var feedback: Feedback? = nil
     @State private var feedbackTask: Task<Void, Never>? = nil
 
-    enum Phase { case intro, good, bad, complete }
+    enum Phase { case intro, capturing, complete }
 
     private enum Feedback {
-        case success(String)
-        case failure(String)
-        var isSuccess: Bool { if case .success = self { return true }; return false }
-        var text: String { switch self { case .success(let s), .failure(let s): return s } }
+        case good(String)
+        case bad(String)
+        case error(String)
+
+        var text: String {
+            switch self { case .good(let s), .bad(let s), .error(let s): return s }
+        }
+        var color: Color {
+            switch self {
+            case .good:  return .green
+            case .bad:   return .red
+            case .error: return .orange
+            }
+        }
+        var icon: String {
+            switch self {
+            case .good:  return "checkmark.circle.fill"
+            case .bad:   return "xmark.circle.fill"
+            case .error: return "exclamationmark.triangle.fill"
+            }
+        }
     }
 
-    private let goodPrompts = [
-        "Sit up straight, shoulders even and relaxed",
-        "Same position — look slightly to the left",
-        "Same position — look slightly to the right",
-        "Lean back just a little into your chair",
-        "Head perfectly centered, chin slightly tucked",
-    ]
-
-    private let badPrompts = [
-        "Slouch forward — let your back curve",
-        "Lean your head toward the screen",
-        "Tilt your body to one side",
-        "Let your shoulders sag and drop forward",
-        "Crane your neck toward the screen",
-    ]
+    private var canFinish: Bool {
+        working.goodSamples.count >= 2 && working.badSamples.count >= 2
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,15 +55,14 @@ struct ProCalibrationView: View {
 
             Group {
                 switch phase {
-                case .intro:    introPage
-                case .good:     capturePage(isGood: true)
-                case .bad:      capturePage(isGood: false)
-                case .complete: completePage
+                case .intro:     introPage
+                case .capturing: capturePage
+                case .complete:  completePage
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 520, height: phase == .complete ? 440 : 660)
+        .frame(width: 520, height: phase == .complete ? 440 : 640)
         .animation(.easeInOut(duration: 0.25), value: phase)
     }
 
@@ -85,10 +88,9 @@ struct ProCalibrationView: View {
 
     private var headerSubtitle: String {
         switch phase {
-        case .intro:    return "Train posturapp with your actual poses"
-        case .good:     return "Step 1 of 2 — Good posture samples"
-        case .bad:      return "Step 2 of 2 — Bad posture samples"
-        case .complete: return "All done!"
+        case .intro:     return "Train posturapp with your actual poses"
+        case .capturing: return "Label each pose as good or bad"
+        case .complete:  return "All done!"
         }
     }
 
@@ -116,7 +118,6 @@ struct ProCalibrationView: View {
                     isPostureBad: false
                 )
 
-                // Body detection indicator
                 if !poseDetector.bodyDetected {
                     VStack {
                         Spacer()
@@ -145,7 +146,7 @@ struct ProCalibrationView: View {
             VStack(spacing: 8) {
                 Text("Teach posturapp YOUR body")
                     .font(.system(size: 17, weight: .bold))
-                Text("Record real examples of how YOU sit — good and bad. posturapp learns the difference and detects YOUR specific habits.")
+                Text("Get into a posture and label it. Alternate between good and bad as many times as you want — the more varied, the better.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -153,18 +154,17 @@ struct ProCalibrationView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                stepRow(number: "1", text: "Record 2–5 examples of good posture")
-                stepRow(number: "2", text: "Record 2–5 examples of bad posture")
-                stepRow(number: "3", text: "posturapp activates your personal model")
+                stepRow(number: "1", text: "Sit in any posture — good or bad")
+                stepRow(number: "2", text: "Click the matching button to label it")
+                stepRow(number: "3", text: "Repeat with at least 2 good + 2 bad")
             }
             .padding(14)
             .background(Color(NSColor.controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            Button("Start Pro Calibration") {
+            Button("Start") {
                 working = ProCalibrationBaseline()
-                promptIndex = 0
-                phase = .good
+                phase = .capturing
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -186,100 +186,152 @@ struct ProCalibrationView: View {
         }
     }
 
-    // MARK: - Capture page
+    // MARK: - Capture
 
-    private func capturePage(isGood: Bool) -> some View {
-        let prompts = isGood ? goodPrompts : badPrompts
-        let samples = isGood ? working.goodSamples : working.badSamples
-        let accentColor: Color = isGood ? .green : .red
-        let canContinue = samples.count >= 2
-        let currentPrompt = prompts[min(promptIndex, prompts.count - 1)]
+    private var capturePage: some View {
+        VStack(spacing: 16) {
 
-        return VStack(spacing: 14) {
-
-            // Progress pills
-            HStack(spacing: 6) {
-                ForEach(0..<5, id: \.self) { i in
-                    Capsule()
-                        .fill(i < samples.count ? accentColor : Color(NSColor.separatorColor))
-                        .frame(width: 36, height: 6)
-                }
+            // Counters
+            HStack(spacing: 20) {
+                sampleCounter(
+                    count: working.goodSamples.count,
+                    label: "Good",
+                    color: .green,
+                    icon: "checkmark.circle.fill"
+                )
+                Divider().frame(height: 36)
+                sampleCounter(
+                    count: working.badSamples.count,
+                    label: "Bad",
+                    color: .red,
+                    icon: "xmark.circle.fill"
+                )
             }
+            .padding(.horizontal, 28)
+            .padding(.top, 4)
 
-            // Prompt card
-            VStack(spacing: 6) {
-                Text(isGood ? "✅ Good Posture" : "💀 Bad Posture")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(accentColor)
-                    .textCase(.uppercase)
-                    .tracking(1)
-
-                Text(currentPrompt)
-                    .font(.system(size: 16, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(16)
-            .background(accentColor.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-            // Feedback / hint
+            // Feedback
             Group {
                 if let fb = feedback {
                     HStack(spacing: 6) {
-                        Image(systemName: fb.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        Image(systemName: fb.icon)
                         Text(fb.text)
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .foregroundColor(fb.isSuccess ? accentColor : .orange)
+                    .foregroundColor(fb.color)
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 } else {
-                    Text("\(samples.count) sample\(samples.count == 1 ? "" : "s") captured")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(samples.count >= 2 ? accentColor : .secondary)
+                    Text("Adopt a posture and click the matching button")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                 }
             }
             .frame(height: 22)
 
             Spacer()
 
-            // Actions
-            HStack(spacing: 10) {
-                if promptIndex < prompts.count - 1 && samples.count < 5 {
-                    Button("Skip") {
-                        promptIndex += 1
-                    }
-                    .buttonStyle(.bordered)
-                    .foregroundColor(.secondary)
+            // Capture buttons
+            HStack(spacing: 14) {
+                captureButton(
+                    title: "Good Posture",
+                    subtitle: "Sitting well",
+                    icon: "checkmark.circle.fill",
+                    color: .green
+                ) {
+                    capture(isGood: true)
                 }
 
-                Button("Capture") {
-                    captureCurrentSample(isGood: isGood)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(accentColor)
-                .controlSize(.large)
-
-                if canContinue {
-                    Button(isGood ? "Continue →" : "Finish & Save") {
-                        if isGood {
-                            promptIndex = 0
-                            phase = .bad
-                        } else {
-                            postureAnalyzer.saveProCalibration(working)
-                            phase = .complete
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                captureButton(
+                    title: "Bad Posture",
+                    subtitle: "Slouching / leaning",
+                    icon: "xmark.circle.fill",
+                    color: .red
+                ) {
+                    capture(isGood: false)
                 }
             }
+            .padding(.horizontal, 28)
+
+            // Finish
+            if canFinish {
+                Button("Finish & Save") {
+                    postureAnalyzer.saveProCalibration(working)
+                    phase = .complete
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else {
+                let goodLeft = max(0, 2 - working.goodSamples.count)
+                let badLeft  = max(0, 2 - working.badSamples.count)
+                Text(remainingHint(goodLeft: goodLeft, badLeft: badLeft))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer(minLength: 16)
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 18)
-        .animation(.easeInOut(duration: 0.2), value: feedback?.text)
+        .animation(.easeInOut(duration: 0.2), value: canFinish)
+        .animation(.easeInOut(duration: 0.15), value: feedback?.text)
+    }
+
+    private func captureButton(
+        title: String,
+        subtitle: String,
+        icon: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 28))
+                    .foregroundColor(color)
+                VStack(spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .bold))
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(color.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(color.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!poseDetector.bodyDetected)
+    }
+
+    private func sampleCounter(count: Int, label: String, color: Color, icon: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .foregroundColor(count >= 2 ? color : .secondary)
+                .font(.system(size: 18))
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(count)")
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundColor(count >= 2 ? color : .secondary)
+                Text(label)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func remainingHint(goodLeft: Int, badLeft: Int) -> String {
+        switch (goodLeft, badLeft) {
+        case (0, 0): return ""
+        case (let g, 0) where g > 0: return "Need \(g) more good sample\(g > 1 ? "s" : "")"
+        case (0, let b) where b > 0: return "Need \(b) more bad sample\(b > 1 ? "s" : "")"
+        default: return "Need \(goodLeft) more good + \(badLeft) more bad"
+        }
     }
 
     // MARK: - Complete
@@ -293,7 +345,7 @@ struct ProCalibrationView: View {
             VStack(spacing: 8) {
                 Text("Pro model active!")
                     .font(.system(size: 20, weight: .bold))
-                Text("posturapp will now use your \(working.goodSamples.count) good + \(working.badSamples.count) bad samples to detect issues. The more varied your samples, the better it gets.")
+                Text("posturapp will now use your \(working.goodSamples.count) good + \(working.badSamples.count) bad samples to detect issues. The more varied the samples, the better it gets.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -329,27 +381,21 @@ struct ProCalibrationView: View {
 
     // MARK: - Capture logic
 
-    private func captureCurrentSample(isGood: Bool) {
+    private func capture(isGood: Bool) {
         feedbackTask?.cancel()
         guard let features = postureAnalyzer.extractFeatures(joints: poseDetector.joints) else {
-            showFeedback(.failure("No body detected — try again"))
+            showFeedback(.error("No body detected — try again"))
             return
         }
 
         if isGood {
-            guard working.goodSamples.count < 5 else { return }
+            guard working.goodSamples.count < 10 else { return }
             working.goodSamples.append(features)
+            showFeedback(.good("Good posture captured (\(working.goodSamples.count) total)"))
         } else {
-            guard working.badSamples.count < 5 else { return }
+            guard working.badSamples.count < 10 else { return }
             working.badSamples.append(features)
-        }
-
-        let count = isGood ? working.goodSamples.count : working.badSamples.count
-        showFeedback(.success("Sample \(count) captured!"))
-
-        let prompts = isGood ? goodPrompts : badPrompts
-        if promptIndex < prompts.count - 1 {
-            promptIndex += 1
+            showFeedback(.bad("Bad posture captured (\(working.badSamples.count) total)"))
         }
     }
 
