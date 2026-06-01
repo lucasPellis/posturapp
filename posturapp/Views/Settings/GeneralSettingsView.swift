@@ -7,6 +7,7 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var poseDetector: PoseDetector
 
     @State private var calibrationMessage: String? = nil
+    @State private var showProCalibration = false
 
     var body: some View {
         ScrollView {
@@ -55,6 +56,72 @@ struct GeneralSettingsView: View {
                     .padding()
                     .background(Color(NSColor.controlBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                // MARK: Pro Calibration
+                settingsSection("Pro Calibration") {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Text("Personal posture model")
+                                    .font(.headline)
+                                Text("PRO")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(Color.purple.opacity(0.2))
+                                    .foregroundColor(.purple)
+                                    .clipShape(Capsule())
+                            }
+                            Text("Record examples of your good and bad postures. posturapp trains a personal model and detects YOUR specific habits — much more accurate than generic thresholds.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            if let pro = postureAnalyzer.proBaseline {
+                                HStack(spacing: 12) {
+                                    Label("\(pro.goodSamples.count) good", systemImage: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Label("\(pro.badSamples.count) bad", systemImage: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                }
+                                .font(.caption)
+                                .padding(.top, 2)
+                            } else {
+                                Text("Not configured — basic calibration is active")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .italic()
+                                    .padding(.top, 2)
+                            }
+                        }
+
+                        Spacer()
+
+                        VStack(spacing: 8) {
+                            Button(postureAnalyzer.proBaseline == nil ? "Set Up" : "Re-train") {
+                                showProCalibration = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.purple)
+
+                            if postureAnalyzer.proBaseline != nil {
+                                Button("Clear") {
+                                    postureAnalyzer.clearProCalibration()
+                                }
+                                .buttonStyle(.bordered)
+                                .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .sheet(isPresented: $showProCalibration) {
+                    ProCalibrationView()
+                        .environmentObject(poseDetector)
+                        .environmentObject(postureAnalyzer)
                 }
 
                 // MARK: Alert timing

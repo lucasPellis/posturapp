@@ -1,7 +1,48 @@
 import Vision
 import Combine
 
-// MARK: - Baseline
+// MARK: - Pro Calibration
+
+struct ProCalibrationBaseline: Codable {
+
+    var goodSamples: [[Double]] = []
+    var badSamples: [[Double]] = []
+
+    var isComplete: Bool { goodSamples.count >= 2 && badSamples.count >= 2 }
+
+    var goodCentroid: [Double] { centroid(of: goodSamples) }
+    var badCentroid: [Double] { centroid(of: badSamples) }
+
+    private func centroid(of samples: [[Double]]) -> [Double] {
+        guard !samples.isEmpty else { return Array(repeating: 0, count: 4) }
+        let count = Double(samples.count)
+        return (0..<samples[0].count).map { i in
+            samples.map { $0[i] }.reduce(0, +) / count
+        }
+    }
+
+    private static let defaultsKey = "posture.proBaseline"
+
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: Self.defaultsKey)
+        }
+    }
+
+    static func load() -> ProCalibrationBaseline? {
+        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
+              let b = try? JSONDecoder().decode(ProCalibrationBaseline.self, from: data),
+              b.isComplete
+        else { return nil }
+        return b
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: defaultsKey)
+    }
+}
+
+// MARK: - Basic Baseline
 
 struct PostureBaseline: Codable {
     /// Horizontal distance between ears (grows when leaning toward camera)
@@ -94,6 +135,7 @@ final class PostureAnalyzer: ObservableObject {
     @Published var consecutiveBadSeconds: Double = 0
     @Published var shouldAlert = false
     @Published var baseline: PostureBaseline?
+    @Published var proBaseline: ProCalibrationBaseline?
 
     var leanForwardTolerance: CGFloat = 0.20
     var slouchTolerance: CGFloat = 0.25
@@ -107,7 +149,8 @@ final class PostureAnalyzer: ObservableObject {
 
     init() {
         baseline = PostureBaseline.load()
-        postureState = baseline == nil ? .needsCalibration : .unknown
+        proBaseline = ProCalibrationBaseline.load()
+        postureState = (baseline == nil && proBaseline == nil) ? .needsCalibration : .unknown
     }
 
     // MARK: - Calibration
@@ -124,7 +167,54 @@ final class PostureAnalyzer: ObservableObject {
     func clearCalibration() {
         baseline = nil
         PostureBaseline.clear()
-        postureState = .needsCalibration
+        if proBaseline == nil { postureState = .needsCalibration }
+    }
+
+    // MARK: - Pro Calibration
+
+    /// Extracts a 4-element feature vector normalized by shoulder width.
+    func extractFeatures(joints: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint]) -> [Double]? {
+        func pt(_ name: VNHumanBodyPoseObservation.JointName) -> CGPoint? {
+            guard let p = joints[name], p.confidence >= 0.15 else { return nil }
+            return p.location
+        }
+        guard
+            let leftShoulder = pt(.leftShoulder),
+            let rightShoulder = pt(.rightShoulder),
+            let leftEar = pt(.leftEar),
+            let rightEar = pt(.rightEar)
+        else { return nil }
+
+        let shoulderWidth = abs(rightShoulder.x - leftShoulder.x)
+        guard shoulderWidth > 0.01 else { return nil }
+
+        let earWidth = abs(rightEar.x - leftEar.x)
+        let earMidY = (leftEar.y + rightEar.y) / 2
+        let shoulderMidY = (leftShoulder.y + rightShoulder.y) / 2
+        let earShoulderGap = earMidY - shoulderMidY
+        let shoulderAsymmetry = abs(leftShoulder.y - rightShoulder.y)
+        let earMidX = (leftEar.x + rightEar.x) / 2
+        let shoulderMidX = (leftShoulder.x + rightShoulder.x) / 2
+        let lateralLean = earMidX - shoulderMidX
+
+        return [
+            Double(earWidth / shoulderWidth),
+            Double(earShoulderGap / shoulderWidth),
+            Double(shoulderAsymmetry / shoulderWidth),
+            Double(lateralLean / shoulderWidth),
+        ]
+    }
+
+    func saveProCalibration(_ pro: ProCalibrationBaseline) {
+        proBaseline = pro
+        pro.save()
+        if postureState == .needsCalibration { postureState = .unknown }
+    }
+
+    func clearProCalibration() {
+        proBaseline = nil
+        ProCalibrationBaseline.clear()
+        if baseline == nil { postureState = .needsCalibration }
     }
 
     // MARK: - Analysis
@@ -133,6 +223,19 @@ final class PostureAnalyzer: ObservableObject {
         guard !joints.isEmpty else {
             postureState = .unknown
             resetBadTimer()
+            return
+        }
+
+        // Pro baseline takes priority over basic baseline
+        if let pro = proBaseline {
+            if let features = extractFeatures(joints: joints),
+               let issue = classifyWithPro(features: features, baseline: pro) {
+                postureState = .bad(reason: issue)
+                handleBadPosture(reason: issue)
+            } else {
+                postureState = .good
+                resetBadTimer()
+            }
             return
         }
 
@@ -153,6 +256,34 @@ final class PostureAnalyzer: ObservableObject {
     func resetAlert() {
         shouldAlert = false
         lastAlertTime = Date()
+    }
+
+    // MARK: - Pro Classifier (centroid distance)
+
+    private func classifyWithPro(features: [Double], baseline: ProCalibrationBaseline) -> String? {
+        let good = baseline.goodCentroid
+        let bad = baseline.badCentroid
+        let distGood = euclidean(features, good)
+        let distBad = euclidean(features, bad)
+
+        // Require bad to be meaningfully closer to avoid false positives
+        guard distBad < distGood * 0.85 else { return nil }
+
+        // Identify the most deviated feature from good centroid to pick a reason
+        let deltas = zip(features, good).map { abs($0 - $1) }
+        let worst = deltas.enumerated().max(by: { $0.element < $1.element })?.offset
+
+        switch worst {
+        case 0: return "You're leaning too close to the screen"
+        case 1: return "You appear to be slouching"
+        case 2: return "Your shoulders are uneven"
+        case 3: return "You're leaning to the side"
+        default: return "Bad posture detected"
+        }
+    }
+
+    private func euclidean(_ a: [Double], _ b: [Double]) -> Double {
+        zip(a, b).map { pow($0 - $1, 2) }.reduce(0, +).squareRoot()
     }
 
     // MARK: - Heuristics (all relative to personal baseline)
