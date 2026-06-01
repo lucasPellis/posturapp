@@ -3,6 +3,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
 
     @EnvironmentObject var settings: AppSettings
+    @EnvironmentObject var cameraManager: CameraManager
     @EnvironmentObject var postureAnalyzer: PostureAnalyzer
     @EnvironmentObject var poseDetector: PoseDetector
 

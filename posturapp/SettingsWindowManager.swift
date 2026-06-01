@@ -16,6 +16,7 @@ final class SettingsWindowManager {
         }
 
         let view = SettingsWindowView()
+            .environmentObject(appState.cameraManager)
             .environmentObject(appState.postureAnalyzer)
             .environmentObject(appState.poseDetector)
             .environmentObject(appState.statsStore)
