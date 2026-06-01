@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		BB000002BB000002BB000002 /* posturapp/Memes in Resources */ = {isa = PBXBuildFile; fileRef = BB000001BB000001BB000001 /* posturapp/Memes */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		A505F5762FCDF8A700EF4EAD /* posturapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = posturapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB000001BB000001BB000001 /* posturapp/Memes */ = {isa = PBXFileReference; lastKnownFileType = folder; path = posturapp/Memes; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +38,7 @@
 			isa = PBXGroup;
 			children = (
 				A505F5782FCDF8A700EF4EAD /* posturapp */,
+				BB000001BB000001BB000001 /* posturapp/Memes */,
 				A505F5772FCDF8A700EF4EAD /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,6 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB000002BB000002BB000002 /* posturapp/Memes in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

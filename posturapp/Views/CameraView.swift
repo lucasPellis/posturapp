@@ -6,6 +6,8 @@ struct CameraView: View {
     @EnvironmentObject var poseDetector: PoseDetector
     @EnvironmentObject var postureAnalyzer: PostureAnalyzer
 
+    @State private var pulsing = false
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -15,8 +17,48 @@ struct CameraView: View {
                     viewSize: geometry.size,
                     isPostureBad: postureAnalyzer.postureState.isBad
                 )
+                if postureAnalyzer.postureState.isBad {
+                    badPostureOverlay
+                }
             }
         }
+        .onChange(of: postureAnalyzer.postureState.isBad) { _, isBad in
+            pulsing = isBad
+        }
+    }
+
+    // Pulsing red vignette overlay
+    private var badPostureOverlay: some View {
+        RoundedRectangle(cornerRadius: 0)
+            .strokeBorder(
+                Color.red.opacity(pulsing ? 0.85 : 0.2),
+                lineWidth: 6
+            )
+            .animation(
+                .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+                value: pulsing
+            )
+            .onAppear { pulsing = true }
+            .overlay {
+                // Corner warning indicators
+                VStack {
+                    HStack {
+                        warningIcon
+                        Spacer()
+                        warningIcon
+                    }
+                    Spacer()
+                }
+                .padding(10)
+            }
+    }
+
+    private var warningIcon: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundColor(.red)
+            .font(.system(size: 14, weight: .bold))
+            .opacity(pulsing ? 1.0 : 0.3)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulsing)
     }
 
     @ViewBuilder
@@ -36,7 +78,7 @@ struct CameraView: View {
                 .resizable()
                 .scaledToFill()
                 .clipped()
-                .scaleEffect(x: -1) // Mirror horizontally like a selfie camera
+                .scaleEffect(x: -1)
         } else {
             Color.black
             ProgressView()
