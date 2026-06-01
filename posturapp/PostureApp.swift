@@ -11,11 +11,14 @@ struct PostureApp: App {
                 .environmentObject(appState.cameraManager)
                 .environmentObject(appState.poseDetector)
                 .environmentObject(appState.postureAnalyzer)
+                .environmentObject(appState.settings)
+                .environmentObject(appState)
         }
         .menuBarExtraStyle(.window)
     }
 
     private var menuBarIcon: String {
+        if !appState.isMonitoring { return "eye.slash" }
         switch appState.postureAnalyzer.postureState {
         case .bad: return "exclamationmark.triangle.fill"
         case .needsCalibration: return "person.badge.plus"

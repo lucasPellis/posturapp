@@ -5,6 +5,7 @@ struct CameraView: View {
     @EnvironmentObject var cameraManager: CameraManager
     @EnvironmentObject var poseDetector: PoseDetector
     @EnvironmentObject var postureAnalyzer: PostureAnalyzer
+    @EnvironmentObject var settings: AppSettings
 
     @State private var pulsing = false
 
@@ -12,11 +13,13 @@ struct CameraView: View {
         GeometryReader { geometry in
             ZStack {
                 cameraLayer
-                SkeletonOverlayView(
-                    joints: poseDetector.joints,
-                    viewSize: geometry.size,
-                    isPostureBad: postureAnalyzer.postureState.isBad
-                )
+                if settings.showSkeleton {
+                    SkeletonOverlayView(
+                        joints: poseDetector.joints,
+                        viewSize: geometry.size,
+                        isPostureBad: postureAnalyzer.postureState.isBad
+                    )
+                }
                 if postureAnalyzer.postureState.isBad {
                     badPostureOverlay
                 }

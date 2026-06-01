@@ -95,17 +95,15 @@ final class PostureAnalyzer: ObservableObject {
     @Published var shouldAlert = false
     @Published var baseline: PostureBaseline?
 
-    // How far from baseline triggers a warning (as a ratio)
-    // e.g. 0.20 = 20% deviation from your personal good posture
-    private let leanForwardTolerance: CGFloat = 0.20    // earWidth grows by more than 20%
-    private let slouchTolerance: CGFloat = 0.25          // earShoulderGap shrinks by more than 25%
-    private let shoulderAsymmetryThreshold: CGFloat = 0.05  // still absolute — already relative measurement
+    var leanForwardTolerance: CGFloat = 0.20
+    var slouchTolerance: CGFloat = 0.25
+    private let shoulderAsymmetryThreshold: CGFloat = 0.05
 
     private let minimumConfidence: Float = 0.25
     private var badPostureStartTime: Date?
     private var lastAlertTime: Date?
-    private let alertThreshold: TimeInterval = 30
-    private let alertCooldown: TimeInterval = 30
+    var alertThreshold: TimeInterval = 30
+    var alertCooldown: TimeInterval = 30
 
     init() {
         baseline = PostureBaseline.load()

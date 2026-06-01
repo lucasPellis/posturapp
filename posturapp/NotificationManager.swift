@@ -47,17 +47,20 @@ final class NotificationManager: ObservableObject {
         }
     }
 
-    func scheduleAlert(reason: String) {
+    func scheduleAlert(reason: String, settings: AppSettings = .shared) {
+        guard settings.enableNotifications || settings.enableFullScreenOverlay else { return }
         let idx = randomIndex(avoiding: lastMemeIndex, count: titles.count)
         lastMemeIndex = idx
 
         // Full-screen overlay — the main "boom" effect
-        DispatchQueue.main.async {
-            AlertOverlayManager.shared.show(
-                title: self.titles[idx],
-                message: self.bodies[idx],
-                memeIndex: idx
-            )
+        if settings.enableFullScreenOverlay {
+            DispatchQueue.main.async {
+                AlertOverlayManager.shared.show(
+                    title: self.titles[idx],
+                    message: self.bodies[idx],
+                    memeIndex: idx
+                )
+            }
         }
 
         // Also send a notification for when the app is in background / popover closed
@@ -77,9 +80,11 @@ final class NotificationManager: ObservableObject {
             content.attachments = [attachment]
         }
 
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        let request = UNNotificationRequest(identifier: alertIdentifier, content: content, trigger: trigger)
-        center.add(request)
+        if settings.enableNotifications {
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+            let request = UNNotificationRequest(identifier: alertIdentifier, content: content, trigger: trigger)
+            center.add(request)
+        }
     }
 
     func cancelAlert() {
