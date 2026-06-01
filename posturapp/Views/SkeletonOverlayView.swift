@@ -55,9 +55,8 @@ struct SkeletonOverlayView: View {
     private func viewPoint(_ name: VNHumanBodyPoseObservation.JointName, in size: CGSize) -> CGPoint? {
         guard let point = joints[name], point.confidence > 0.3 else { return nil }
         // Vision: origin bottom-left, y up → SwiftUI: origin top-left, y down
-        // Mirror x to match the horizontally flipped camera preview
         return CGPoint(
-            x: (1 - point.location.x) * size.width,
+            x: point.location.x * size.width,
             y: (1 - point.location.y) * size.height
         )
     }

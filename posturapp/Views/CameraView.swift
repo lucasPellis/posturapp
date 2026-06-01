@@ -78,7 +78,6 @@ struct CameraView: View {
                 .resizable()
                 .scaledToFill()
                 .clipped()
-                .scaleEffect(x: -1)
         } else {
             Color.black
             ProgressView()
