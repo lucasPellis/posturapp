@@ -51,6 +51,8 @@ struct PostureBaseline: Codable {
     let earShoulderGap: CGFloat
     /// Horizontal distance between shoulders (reference for shoulder level check)
     let shoulderWidth: CGFloat
+    /// Normalized X of shoulder midpoint — used to lock onto the right person
+    let shoulderMidX: CGFloat
 
     static func capture(joints: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint]) -> PostureBaseline? {
         func pt(_ name: VNHumanBodyPoseObservation.JointName) -> CGPoint? {
@@ -70,11 +72,13 @@ struct PostureBaseline: Codable {
         let shoulderY = (leftShoulder.y + rightShoulder.y) / 2
         let earShoulderGap = earY - shoulderY
         let shoulderWidth = abs(leftShoulder.x - rightShoulder.x)
+        let shoulderMidX = (leftShoulder.x + rightShoulder.x) / 2
 
         return PostureBaseline(
             earWidth: earWidth,
             earShoulderGap: earShoulderGap,
-            shoulderWidth: shoulderWidth
+            shoulderWidth: shoulderWidth,
+            shoulderMidX: shoulderMidX
         )
     }
 

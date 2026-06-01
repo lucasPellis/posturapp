@@ -49,6 +49,25 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Sync calibration anchor into pose detector for subject lock-on
+        postureAnalyzer.$baseline
+            .compactMap { $0?.shoulderMidX }
+            .sink { [weak poseDetector] x in poseDetector?.subjectAnchorX = x }
+            .store(in: &cancellables)
+
+        postureAnalyzer.$proBaseline
+            .compactMap { $0 }
+            .sink { [weak self] _ in
+                guard let self else { return }
+                // Grab shoulder mid X from the most recent joints snapshot
+                let j = self.poseDetector.joints
+                if let l = j[.leftShoulder], let r = j[.rightShoulder],
+                   l.confidence > 0.1, r.confidence > 0.1 {
+                    self.poseDetector.subjectAnchorX = (l.location.x + r.location.x) / 2
+                }
+            }
+            .store(in: &cancellables)
+
         // Sync settings into analyzer
         settings.$alertThreshold
             .sink { [weak postureAnalyzer] val in postureAnalyzer?.alertThreshold = val }
