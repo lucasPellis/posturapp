@@ -9,7 +9,7 @@ final class AlertOverlayManager {
 
     private init() {}
 
-    func show(title: String, body: String, memeIndex: Int) {
+    func show(title: String, message: String, memeIndex: Int) {
         guard overlayWindow == nil else { return }
 
         guard let screen = NSScreen.main else { return }
@@ -26,7 +26,7 @@ final class AlertOverlayManager {
         window.ignoresMouseEvents = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let view = AlertOverlayView(title: title, body: body, memeIndex: memeIndex) {
+        let view = AlertOverlayView(title: title, message: message, memeIndex: memeIndex) {
             self.dismiss()
         }
         window.contentView = NSHostingView(rootView: view)

@@ -3,7 +3,7 @@ import SwiftUI
 struct AlertOverlayView: View {
 
     let title: String
-    let body: String
+    let message: String
     let memeIndex: Int
     let onDismiss: () -> Void
 
@@ -51,7 +51,7 @@ struct AlertOverlayView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
 
-                    Text(body)
+                    Text(message)
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
                         .multilineTextAlignment(.center)

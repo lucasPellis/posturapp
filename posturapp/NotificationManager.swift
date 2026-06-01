@@ -55,7 +55,7 @@ final class NotificationManager: ObservableObject {
         DispatchQueue.main.async {
             AlertOverlayManager.shared.show(
                 title: self.titles[idx],
-                body: self.bodies[idx],
+                message: self.bodies[idx],
                 memeIndex: idx
             )
         }
