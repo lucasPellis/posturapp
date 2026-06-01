@@ -1,3 +1,4 @@
+import Foundation
 import Combine
 
 final class AppSettings: ObservableObject {

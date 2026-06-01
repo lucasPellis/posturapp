@@ -42,9 +42,32 @@ final class NotificationManager: ObservableObject {
     // MARK: - Public API
 
     func requestAuthorization() {
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            DispatchQueue.main.async { self.authorizationGranted = granted }
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            DispatchQueue.main.async {
+                self?.authorizationGranted = granted
+                if granted { self?.scheduleDailyReportNotification() }
+            }
         }
+    }
+
+    func scheduleDailyReportNotification() {
+        var components = DateComponents()
+        components.hour = 18
+        components.minute = 0
+
+        let content = UNMutableNotificationContent()
+        content.title = "📊 Your Daily Posture Report is Ready"
+        content.body = "Your spine survived another day. Tap to see how much damage was done."
+        content.sound = .default
+        content.userInfo = ["action": "open_report"]
+
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+        let request = UNNotificationRequest(
+            identifier: "posture.daily.report",
+            content: content,
+            trigger: trigger
+        )
+        center.add(request)
     }
 
     func scheduleAlert(reason: String, settings: AppSettings = .shared) {

@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import AppKit
 
 struct StatisticsView: View {
 
@@ -10,6 +11,11 @@ struct StatisticsView: View {
     private var todayScore: Double { statsStore.todayScore() }
     private var totalBadToday: TimeInterval { statsStore.totalBadToday() }
     private var longestGood: TimeInterval { statsStore.longestGoodStreak() }
+
+    @State private var showReport = false
+    @State private var pendingReport: PostureReport? = nil
+    @State private var reportImageURL: URL? = nil
+    @State private var isGenerating = false
 
     var body: some View {
         ScrollView {
@@ -85,15 +91,13 @@ struct StatisticsView: View {
                             .cornerRadius(5)
                         }
                         .chartXAxis {
-                            AxisMarks(values: .stride(by: .day)) { val in
+                            AxisMarks(values: .stride(by: .day)) { _ in
                                 AxisValueLabel(format: .dateTime.weekday(.abbreviated))
                             }
                         }
                         .chartYScale(domain: 0...100)
                         .chartYAxisLabel("Score %")
                         .frame(height: 180)
-
-                        // Reference line at 80%
                         .chartOverlay { proxy in
                             GeometryReader { geo in
                                 if let y = proxy.position(forY: 80.0) {
@@ -128,9 +132,104 @@ struct StatisticsView: View {
                     }
                 }
 
+                // MARK: Posture Wrapped
+                wrappedSection
+
                 Spacer(minLength: 16)
             }
             .padding()
+        }
+        .sheet(isPresented: $showReport) {
+            if let report = pendingReport {
+                ReportSheet(report: report, imageURL: $reportImageURL)
+            }
+        }
+    }
+
+    // MARK: - Posture Wrapped
+
+    private var wrappedSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Text("🦒")
+                    .font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Posture Wrapped")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Your spine's story, beautifully roasted.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                reportButton("Daily Report", period: .daily)
+                reportButton("Weekly Report", period: .weekly)
+            }
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func reportButton(_ title: String, period: PostureReport.Period) -> some View {
+        Button {
+            generateReport(period: period)
+        } label: {
+            HStack(spacing: 6) {
+                if isGenerating {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: "chart.bar.doc.horizontal")
+                }
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(Color.accentColor.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(isGenerating)
+    }
+
+    @MainActor
+    private func generateReport(period: PostureReport.Period) {
+        guard !isGenerating else { return }
+        isGenerating = true
+        reportImageURL = nil
+
+        let report = period == .daily
+            ? PostureReport.daily(from: statsStore)
+            : PostureReport.weekly(from: statsStore)
+
+        pendingReport = report
+        showReport = true
+
+        Task { @MainActor in
+            defer { isGenerating = false }
+            let renderer = ImageRenderer(content: ReportCardView(report: report))
+            renderer.scale = 2.0
+            guard let cgImage = renderer.cgImage else { return }
+
+            let nsImage = NSImage(cgImage: cgImage, size: NSSize(
+                width: cgImage.width / 2,
+                height: cgImage.height / 2
+            ))
+
+            let filename = period == .daily ? "posture_daily_report.png" : "posture_weekly_report.png"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+
+            guard let tiffData = nsImage.tiffRepresentation,
+                  let bitmap = NSBitmapImageRep(data: tiffData),
+                  let pngData = bitmap.representation(using: .png, properties: [:]) else { return }
+
+            try? pngData.write(to: url)
+            reportImageURL = url
         }
     }
 
@@ -214,5 +313,81 @@ struct StatisticsView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 120)
+    }
+}
+
+// MARK: - Report Sheet
+
+private struct ReportSheet: View {
+
+    let report: PostureReport
+    @Binding var imageURL: URL?
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Title bar
+            HStack {
+                Button("Close") { dismiss() }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("Posture Wrapped")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button("Close") { dismiss() }
+                    .buttonStyle(.plain)
+                    .opacity(0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+
+            Divider()
+
+            // Report card
+            ReportCardView(report: report)
+                .padding(20)
+
+            Divider()
+
+            // Action buttons
+            HStack(spacing: 12) {
+                if let url = imageURL {
+                    Button {
+                        copyToClipboard(url: url)
+                    } label: {
+                        Label(copied ? "Copied!" : "Copy Image", systemImage: copied ? "checkmark" : "doc.on.clipboard")
+                            .frame(minWidth: 130)
+                    }
+                    .buttonStyle(.bordered)
+
+                    ShareLink(item: url) {
+                        Label("Share…", systemImage: "square.and.arrow.up")
+                            .frame(minWidth: 130)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    ProgressView("Generating image…")
+                        .progressViewStyle(.linear)
+                        .frame(width: 280)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+        .frame(width: 540)
+        .fixedSize(horizontal: true, vertical: true)
+    }
+
+    private func copyToClipboard(url: URL) {
+        guard let image = NSImage(contentsOf: url) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+        copied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            copied = false
+        }
     }
 }
