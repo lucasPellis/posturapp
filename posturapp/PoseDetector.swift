@@ -47,26 +47,55 @@ final class PoseDetector: ObservableObject, @unchecked Sendable {
 
     // MARK: - Subject selection
 
-    /// Picks the most relevant observation from potentially multiple detected bodies.
-    /// With anchor: prefers the observation closest to the calibrated shoulder X.
-    /// Without anchor: prefers the observation with the most confident joints (closest to camera).
     private func bestObservation(
         from results: [VNHumanBodyPoseObservation],
         anchorX: CGFloat?
     ) -> VNHumanBodyPoseObservation? {
+        // Discard non-human detections (chairs, objects with humanoid silhouettes)
+        let humans = results.filter { isHuman($0) }
+        guard !humans.isEmpty else { return nil }
 
         if let anchor = anchorX {
-            return results.min { obsA, obsB in
+            return humans.min { obsA, obsB in
                 let dA = abs((shoulderMidX(obs: obsA) ?? 999) - anchor)
                 let dB = abs((shoulderMidX(obs: obsB) ?? 999) - anchor)
                 return dA < dB
             }
         }
 
-        // No anchor: pick observation with most joints detected above threshold
-        return results.max { obsA, obsB in
+        return humans.max { obsA, obsB in
             jointCount(obs: obsA) < jointCount(obs: obsB)
         }
+    }
+
+    /// Returns true only if the observation looks like an actual seated human.
+    private func isHuman(_ obs: VNHumanBodyPoseObservation) -> Bool {
+        guard let points = try? obs.recognizedPoints(.all) else { return false }
+
+        // 1. Must have at least one face/head joint — objects don't have faces
+        let faceJoints: [VNHumanBodyPoseObservation.JointName] = [
+            .nose, .leftEar, .rightEar, .leftEye, .rightEye
+        ]
+        let hasHead = faceJoints.contains { (points[$0]?.confidence ?? 0) > 0.15 }
+        guard hasHead else { return false }
+
+        // 2. Must have both shoulders
+        guard (points[.leftShoulder]?.confidence ?? 0) > 0.1,
+              (points[.rightShoulder]?.confidence ?? 0) > 0.1
+        else { return false }
+
+        // 3. Head must be geometrically above shoulders (Vision Y: 0=bottom, 1=top)
+        let headY = faceJoints.compactMap { points[$0].map { $0.location.y } }.max() ?? 0
+        let shoulderY = max(
+            points[.leftShoulder]?.location.y ?? 0,
+            points[.rightShoulder]?.location.y ?? 0
+        )
+        guard headY > shoulderY else { return false }
+
+        // 4. Minimum total joints — random object mappings produce very few points
+        guard jointCount(obs: obs) >= 5 else { return false }
+
+        return true
     }
 
     private func shoulderMidX(obs: VNHumanBodyPoseObservation) -> CGFloat? {
